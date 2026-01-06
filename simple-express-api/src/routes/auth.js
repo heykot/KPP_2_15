@@ -3,6 +3,12 @@ const router = express.Router();
 
 
 const userModel = require('../data/users');
+const { 
+  validateRequest, 
+  registerValidation,
+  sanitizeInput,
+  preventNoSQLInjection 
+} = require('../middleware/validationMiddleware');
 
 
 // Простий токен генератор
@@ -34,54 +40,60 @@ const authenticateToken = (req, res, next) => {
 };
 
 
-// Реєстрація нового користувача
-router.post('/register', (req, res) => {
-  try {
-    const { username, email, password } = req.body;
-    
-    // Перевірка обов'язкових полів
-    if (!username || !email || !password) {
-      return res.status(400).json({
+// Реєстрація нового користувача з валідацією та санітизацією
+router.post('/register', 
+  sanitizeInput,
+  preventNoSQLInjection,
+  validateRequest(registerValidation), 
+  (req, res) => {
+    try {
+      const { username, email, password } = req.body;
+      
+      // Перевірка чи існує користувач з таким email
+      const existingUser = userModel.findByEmail(email);
+      if (existingUser) {
+        return res.status(409).json({ // 409 Conflict
+          success: false,
+          message: 'Користувач з таким email вже існує'
+        });
+      }
+      
+      // Перевірка чи існує користувач з таким username
+      const existingUsername = userModel.getAll().find(u => u.username === username);
+      if (existingUsername) {
+        return res.status(409).json({
+          success: false,
+          message: 'Користувач з таким іменем вже існує'
+        });
+      }
+      
+      // Створення користувача
+      const newUser = userModel.create({
+        username,
+        email,
+        password
+      });
+      
+      // Генерація токена
+      const token = generateToken(newUser.id);
+      userModel.saveToken(newUser.id, token);
+      
+      res.status(201).json({
+        success: true,
+        message: 'Користувач успішно зареєстрований',
+        token,
+        user: newUser
+      });
+      
+    } catch (error) {
+      res.status(500).json({
         success: false,
-        message: 'Будь ласка, заповніть всі поля'
+        message: 'Помилка при реєстрації',
+        error: error.message
       });
     }
-    
-    // Перевірка чи існує користувач з таким email
-    const existingUser = userModel.findByEmail(email);
-    if (existingUser) {
-      return res.status(400).json({
-        success: false,
-        message: 'Користувач з таким email вже існує'
-      });
-    }
-    
-    // Створення користувача
-    const newUser = userModel.create({
-      username,
-      email,
-      password // У реальному додатку пароль має бути хешований!
-    });
-    
-    // Генерація токена
-    const token = generateToken(newUser.id);
-    userModel.saveToken(newUser.id, token);
-    
-    res.status(201).json({
-      success: true,
-      message: 'Користувач успішно зареєстрований',
-      token,
-      user: newUser
-    });
-    
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Помилка при реєстрації',
-      error: error.message
-    });
   }
-});
+);
 
 
 // Вхід користувача

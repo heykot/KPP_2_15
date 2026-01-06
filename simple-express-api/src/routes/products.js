@@ -2,6 +2,12 @@ const express = require('express');
 const router = express.Router();
 const productModel = require('../data/products');
 const userModel = require('../data/users');
+const {
+  validateRequest,
+  productValidation,
+  sanitizeInput,
+  preventNoSQLInjection
+} = require('../middleware/validationMiddleware');
 
 
 // Middleware для перевірки токена
@@ -84,8 +90,13 @@ router.get('/:id', (req, res) => {
 
 
 
-// Створити новий продукт (потрібен токен)
-router.post('/', authenticateToken, (req, res) => {
+// Створити новий продукт (потрібен токен) з валідацією
+router.post('/',
+  sanitizeInput,
+  preventNoSQLInjection,
+  validateRequest(productValidation),
+  authenticateToken,
+  (req, res) => {
   try {
     const { name, description, price, category, quantity } = req.body;
     
